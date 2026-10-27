@@ -1,0 +1,9 @@
+{
+  "name": "job-tracker",
+  "private": true,
+  "description": "Personal job & internship tracker: Google Sheet + Apps Script + /find-jobs",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "push": "clasp push"
+  }
+}

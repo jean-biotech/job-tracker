@@ -1,0 +1,12 @@
+# credentials & secrets — never commit
+.clasprc.json
+.env
+.env.*
+*.token
+creds*.json
+client_secret*.json
+# personal files
+resumes/
+# tooling
+node_modules/
+.DS_Store
