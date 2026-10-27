@@ -4,6 +4,8 @@
  *
  *   GET  ?token=…                 → existing roles (both tabs) + settings, for dedupe and pay rules
  *   POST ?token=…  {rows:[…]}     → append new roles to Discovered (duplicates skipped)
+ *   POST ?token=…  {action:"watchlist", updates:[{company, board, slug}]}
+ *                                 → save job-board slugs /find-jobs discovered
  *
  * It can only read the tracker and append to Discovered. It cannot touch Gmail.
  */
@@ -54,7 +56,10 @@ function doPost(e) {
   if (!authorized_(e, body)) return json_({ ok: false, error: 'bad token' });
   var lock = LockService.getScriptLock();
   lock.waitLock(20000);
-  try { return json_(addDiscovered_(body.rows || [])); } finally { lock.releaseLock(); }
+  try {
+    if (body.action === 'watchlist') return json_(updateWatchlist_(body.updates || []));
+    return json_(addDiscovered_(body.rows || []));
+  } finally { lock.releaseLock(); }
 }
 
 function addDiscovered_(rows) {
@@ -74,4 +79,29 @@ function addDiscovered_(rows) {
     added.push({ company: j.company, role: j.role, payBar: o['Meets pay bar'] });
   });
   return { ok: true, added: added, skipped: skipped };
+}
+
+/** Fill in Board type / slug for watchlist companies (adds the company if missing). */
+function updateWatchlist_(updates) {
+  var sh = sheet_(CFG.SHEET.SETTINGS), c = colMap_(sh);
+  var col = c['Watchlist company'];
+  var n = Math.max(sh.getLastRow(), 1);
+  var names = n > 1 ? sh.getRange(2, col, n - 1, 1).getValues().map(function (r) { return String(r[0]); }) : [];
+  var done = [];
+  updates.forEach(function (u) {
+    if (!u || !u.company) return;
+    var i = -1;
+    names.forEach(function (x, k) { if (i < 0 && companySim(x, u.company) >= 0.85) i = k; });
+    var row;
+    if (i >= 0) row = i + 2;
+    else {
+      var empty = names.indexOf('');   // first blank slot in the column
+      row = (empty >= 0 ? empty : names.length) + 2;
+      names[row - 2] = u.company;
+      sh.getRange(row, col).setValue(u.company);
+    }
+    sh.getRange(row, col + 1, 1, 2).setValues([[u.board || '', u.slug || '']]);
+    done.push(u.company);
+  });
+  return { ok: true, updated: done };
 }

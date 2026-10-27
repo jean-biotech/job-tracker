@@ -205,4 +205,13 @@ test('web app rejects bad tokens and returns existing roles', () => {
   assert.equal(post.added.length, 1);
   const noTok = JSON.parse(ctx.doPost({ parameter: {}, postData: { contents: '{"rows":[]}' } }).body);
   assert.equal(noTok.ok, false);
+
+  const wl = JSON.parse(ctx.doPost({ parameter: { token: env._props.WEBAPP_TOKEN },
+    postData: { contents: JSON.stringify({ action: 'watchlist', updates: [
+      { company: 'Neuralink', board: 'greenhouse', slug: 'neuralink' },
+      { company: 'Anthropic', board: 'greenhouse', slug: 'anthropic' }] }) } }).body);
+  assert.equal(wl.updated.length, 2);
+  const w = ctx.getSettings_().watchlist;
+  assert.equal(w.length, 2);
+  assert.equal(w[1].company, 'Anthropic'); assert.equal(w[1].slug, 'anthropic');
 });
