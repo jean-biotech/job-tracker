@@ -10,3 +10,4 @@ resumes/
 # tooling
 node_modules/
 .DS_Store
+dist/AddRoles.gs
