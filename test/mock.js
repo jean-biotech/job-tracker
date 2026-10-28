@@ -174,9 +174,24 @@ function makeEnv(opts = {}) {
       get: () => ({ sheets: [] }),
       batchUpdate: (req) => { batchUpdates.push(req); return {}; }
     } },
+    GmailApp: {
+      search: (q, start, max) => {
+        env._queries.push(q);
+        const all = messages.slice().sort((x, y) => y.date - x.date);
+        return all.slice(start, start + max).map(m => ({
+          getId: () => 't' + m.id,
+          getMessages: () => [{
+            getId: () => m.id, getDate: () => m.date, getFrom: () => m.from,
+            getTo: () => m.to || 'jennifertranpk@gmail.com', getCc: () => '',
+            getSubject: () => m.subject, getPlainBody: () => m.body || ''
+          }]
+        }));
+      }
+    },
     _queries: [], _ss: ss, _mails: mails, _triggers: triggers, _toasts: toasts, _props: props,
     _batch: batchUpdates
   };
+  if (opts.pasteSetup) { delete env.Gmail; delete env.Sheets; } else { delete env.GmailApp; }
   return env;
 }
 

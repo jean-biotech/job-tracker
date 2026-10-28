@@ -215,3 +215,28 @@ test('web app rejects bad tokens and returns existing roles', () => {
   assert.equal(w.length, 2);
   assert.equal(w[1].company, 'Anthropic'); assert.equal(w[1].slug, 'anthropic');
 });
+
+test('copy-paste setup (no advanced services): GmailApp path + view tabs', () => {
+  const msgs = MESSAGES.concat([{ id: 'x1', date: D(9, 10), from: `Stripe <${GH}>`,
+    subject: 'Thank you for applying to Stripe', body: '', to: 'jhfang@sas.upenn.edu' }]);
+  const env = makeEnv({ messages: msgs, pasteSetup: true });
+  const ctx = load(FILES, env);
+  ctx.SEED_ROWS = SEED;
+  ctx.setup();
+  const ss = env._ss;
+  for (const n of ['Urgent', 'Active pipeline', 'Closed']) {
+    const v = ss.getSheetByName(n);
+    assert.ok(v, n + ' view tab');
+    assert.match(v.formulas['2,1'], /FILTER/);
+  }
+  ctx.startBackfill();
+  const rows = ss.getSheetByName('Applications').rowsAsObjects();
+  const bvp = rows.find(r => r.Company === 'Bessemer Venture Partners');
+  assert.equal(bvp.Status, 'Rejected');
+  assert.equal(bvp['Furthest stage reached'], 'Interview R1');
+  assert.ok(rows.find(r => r.Company === 'Coinbase'));
+  assert.ok(!rows.find(r => r.Company === 'Stripe'), 'mail to the other inbox is ignored');
+  const log = ss.getSheetByName('Email Log').rowsAsObjects();
+  assert.equal(new Set(log.map(l => l['Message ID'])).size, log.length, 'no duplicates across weekly windows');
+  assert.equal(ctx.processNewEmails().processed, 0);
+});

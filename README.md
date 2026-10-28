@@ -2,7 +2,7 @@
 
 A personal job and internship tracker: a **Google Sheet** that updates itself from Gmail (read-only), plus a weekly **`/find-jobs`** Claude Code command that discovers new roles.
 
-**First time: follow [QUICKSTART.md](QUICKSTART.md)** (5 min, browser only). [SETUP.md](SETUP.md) is the developer route (clasp + git).
+**First time: follow [QUICKSTART.md](QUICKSTART.md)** (3 steps, browser only). [SETUP.md](SETUP.md) is the developer route (clasp + git).
 
 ## Weekly routine
 1. **Monday:** run `/find-jobs` in Claude Code from this folder. On the **Discovered** tab, tick **Move to Applications** on the roles you want.

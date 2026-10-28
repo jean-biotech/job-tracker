@@ -11,5 +11,5 @@ for (const f of order) {
 }
 fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
 fs.writeFileSync(path.join(root, 'dist', 'JobTracker.gs'), out);
-fs.copyFileSync(path.join(root, 'src', 'appsscript.json'), path.join(root, 'dist', 'appsscript.json'));
+
 console.log('wrote dist/JobTracker.gs (' + out.length + ' chars)');

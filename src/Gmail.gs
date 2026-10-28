@@ -1,7 +1,11 @@
 /**
- * Gmail.gs — READ-ONLY scan of job emails.
- * Uses the Gmail advanced service under the gmail.readonly scope only, so this
- * script physically cannot send, delete, archive or label mail.
+ * Gmail.gs — READ-ONLY scan of job emails. This code only ever reads mail.
+ *
+ * Two ways it can run:
+ *  - clasp/manifest setup: the Gmail advanced service under the gmail.readonly scope,
+ *    so Google itself blocks sending/deleting.
+ *  - copy-paste setup (no manifest): GmailApp. Google's consent screen then asks for full
+ *    mail access, but nothing here calls send, trash, delete, archive or label.
  */
 
 var SCAN_BUDGET_MS = 4.5 * 60 * 1000;   // Apps Script hard limit is 6 min
@@ -123,6 +127,16 @@ function scanContext_() {
 /** Returns false if it ran out of time before finishing the window. */
 function scanWindow_(after, before, ctx, started) {
   var q = buildQuery_(after, before, ctx.st);
+  var msgs = typeof Gmail !== 'undefined'
+    ? listViaAdvanced_(q, ctx, started)
+    : listViaGmailApp_(q, after, before, ctx, started);
+  if (!msgs) return false;
+  msgs.sort(function (a, b) { return a.date - b.date; });   // oldest first so statuses move forward
+  msgs.forEach(function (m) { processMessage_(m, ctx); });
+  return true;
+}
+
+function listViaAdvanced_(q, ctx, started) {
   var ids = [], token;
   do {
     var res = Gmail.Users.Messages.list('me', { q: q, maxResults: 100, pageToken: token });
@@ -132,12 +146,40 @@ function scanWindow_(after, before, ctx, started) {
   var msgs = [];
   for (var i = 0; i < ids.length; i++) {
     if (ctx.seen[ids[i]]) { ctx.stats.skipped++; continue; }
-    if (Date.now() - started > SCAN_BUDGET_MS) return false;
+    if (Date.now() - started > SCAN_BUDGET_MS) return null;
     msgs.push(fetchMessage_(ids[i]));
   }
-  msgs.sort(function (a, b) { return a.date - b.date; });   // oldest first so statuses move forward
-  msgs.forEach(function (m) { processMessage_(m, ctx); });
-  return true;
+  return msgs;
+}
+
+/** GmailApp returns whole threads, so filter each message to the window and recipients. */
+function listViaGmailApp_(q, after, before, ctx, started) {
+  var from = parseGmailDate_(after), to = before ? parseGmailDate_(before) : null;
+  var me = String(Session.getEffectiveUser().getEmail() || '').toLowerCase();
+  var ignore = String(ctx.st.scalars['Ignore emails to'] || '').toLowerCase().split(/[,\s]+/).filter(String);
+  var only = String(ctx.st.scalars['Only emails to (optional)'] || '').toLowerCase().trim();
+  var msgs = [], start = 0, page;
+  do {
+    page = GmailApp.search(q, start, 100);
+    for (var t = 0; t < page.length; t++) {
+      if (Date.now() - started > SCAN_BUDGET_MS) return null;
+      var ms = page[t].getMessages();
+      for (var k = 0; k < ms.length; k++) {
+        var m = ms[k], id = m.getId(), d = m.getDate();
+        if (ctx.seen[id]) { ctx.stats.skipped++; continue; }
+        if (d < from || (to && d >= to)) continue;
+        var fromAddr = m.getFrom();
+        if (me && emailAddress(fromAddr) === me) continue;          // my own replies
+        var rcpt = (m.getTo() + ',' + m.getCc()).toLowerCase();
+        if (ignore.some(function (x) { return rcpt.indexOf(x) !== -1; })) continue;
+        if (only && rcpt.indexOf(only) === -1) continue;
+        msgs.push({ id: id, threadId: page[t].getId(), date: d, from: fromAddr,
+          to: m.getTo(), subject: m.getSubject() || '', body: m.getPlainBody() || '' });
+      }
+    }
+    start += page.length;
+  } while (page.length === 100);
+  return msgs;
 }
 
 function fetchMessage_(id) {

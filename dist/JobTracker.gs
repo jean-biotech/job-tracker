@@ -916,7 +916,13 @@ function setup() {
   setupSettings_(ss);
   setupDashboard_(ss);
   var seeded = seedIfEmpty_();
-  try { setupFilterViews_(ss); } catch (e) { Logger.log('Filter views skipped: ' + e); }
+  try {
+    if (typeof Sheets === 'undefined') throw new Error('Sheets service not enabled');
+    setupFilterViews_(ss);
+  } catch (e) {
+    Logger.log('Filter views unavailable (' + e + '); using view tabs instead');
+    setupViewTabs_(ss);
+  }
   installTriggers_();
   ensureToken_();
   // tab order
@@ -1199,6 +1205,35 @@ function setupFilterViews_(ss) {
   Sheets.Spreadsheets.batchUpdate({ requests: reqs }, id);
 }
 
+/**
+ * Fallback for the copy-paste setup (no Sheets API): three read-only tabs that always show
+ * the Urgent / Active pipeline / Closed rows. Edit rows on Applications, not here.
+ */
+function setupViewTabs_(ss) {
+  var apps = "'" + CFG.SHEET.APPS + "'!";
+  var last = colLetter_(CFG.APP_COLS.length);
+  var P = apps + 'P2:P', M = apps + 'M2:M', data = apps + 'A2:' + last;
+  var views = [
+    ['Urgent', 'SORT(FILTER(' + data + ',((' + P + '="To apply")+(' + P + '="In progress")),ISNUMBER(' + M +
+      '),' + M + '-TODAY()<=14),13,TRUE)'],
+    ['Active pipeline', 'FILTER(' + data + ',ISNUMBER(MATCH(' + P +
+      ',{"Applied","Assessment","Interview R1","Interview R2","Final round","Offer"},0)))'],
+    ['Closed', 'FILTER(' + data + ',ISNUMBER(MATCH(' + P + ',{"Rejected","Ghosted","Withdrawn"},0)))']
+  ];
+  views.forEach(function (v) {
+    var sh = ss.getSheetByName(v[0]) || ss.insertSheet(v[0]);
+    sh.clear();
+    sh.getRange(1, 1, 1, CFG.APP_COLS.length).setValues([CFG.APP_COLS])
+      .setFontWeight('bold').setBackground('#1f3a5f').setFontColor('#ffffff');
+    sh.getRange(2, 1).setFormula('=IFERROR(' + v[1] + ',"(nothing here right now)")');
+    sh.setFrozenRows(1);
+    sh.setFrozenColumns(2);
+    sh.getRange('M2:M').setNumberFormat('mmm d, yyyy');
+    sh.getRange('R2:S').setNumberFormat('mmm d, yyyy');
+    sh.setTabColor('#999999');
+  });
+}
+
 var TRIGGER_FNS = ['processNewEmails', 'dailyDigest', 'markGhosted', 'backfill'];
 
 function installTriggers_() {
@@ -1208,9 +1243,9 @@ function installTriggers_() {
   var st = getSettings_();
   var hour = Number(st.scalars['Digest hour (ET, 0-23)']);
   if (isNaN(hour)) hour = 7;
-  ScriptApp.newTrigger('processNewEmails').timeBased().everyHours(4).create();
-  ScriptApp.newTrigger('markGhosted').timeBased().everyDays(1).atHour(Math.max(0, hour - 1)).create();
-  ScriptApp.newTrigger('dailyDigest').timeBased().everyDays(1).atHour(hour).create();
+  ScriptApp.newTrigger('processNewEmails').timeBased().everyHours(4).inTimezone(CFG.TZ).create();
+  ScriptApp.newTrigger('markGhosted').timeBased().everyDays(1).atHour(Math.max(0, hour - 1)).inTimezone(CFG.TZ).create();
+  ScriptApp.newTrigger('dailyDigest').timeBased().everyDays(1).atHour(hour).inTimezone(CFG.TZ).create();
 }
 
 function seedIfEmpty_() {
@@ -1266,9 +1301,13 @@ function showToken() {
 
 // ===================================================================== Gmail.gs
 /**
- * Gmail.gs — READ-ONLY scan of job emails.
- * Uses the Gmail advanced service under the gmail.readonly scope only, so this
- * script physically cannot send, delete, archive or label mail.
+ * Gmail.gs — READ-ONLY scan of job emails. This code only ever reads mail.
+ *
+ * Two ways it can run:
+ *  - clasp/manifest setup: the Gmail advanced service under the gmail.readonly scope,
+ *    so Google itself blocks sending/deleting.
+ *  - copy-paste setup (no manifest): GmailApp. Google's consent screen then asks for full
+ *    mail access, but nothing here calls send, trash, delete, archive or label.
  */
 
 var SCAN_BUDGET_MS = 4.5 * 60 * 1000;   // Apps Script hard limit is 6 min
@@ -1390,6 +1429,16 @@ function scanContext_() {
 /** Returns false if it ran out of time before finishing the window. */
 function scanWindow_(after, before, ctx, started) {
   var q = buildQuery_(after, before, ctx.st);
+  var msgs = typeof Gmail !== 'undefined'
+    ? listViaAdvanced_(q, ctx, started)
+    : listViaGmailApp_(q, after, before, ctx, started);
+  if (!msgs) return false;
+  msgs.sort(function (a, b) { return a.date - b.date; });   // oldest first so statuses move forward
+  msgs.forEach(function (m) { processMessage_(m, ctx); });
+  return true;
+}
+
+function listViaAdvanced_(q, ctx, started) {
   var ids = [], token;
   do {
     var res = Gmail.Users.Messages.list('me', { q: q, maxResults: 100, pageToken: token });
@@ -1399,12 +1448,40 @@ function scanWindow_(after, before, ctx, started) {
   var msgs = [];
   for (var i = 0; i < ids.length; i++) {
     if (ctx.seen[ids[i]]) { ctx.stats.skipped++; continue; }
-    if (Date.now() - started > SCAN_BUDGET_MS) return false;
+    if (Date.now() - started > SCAN_BUDGET_MS) return null;
     msgs.push(fetchMessage_(ids[i]));
   }
-  msgs.sort(function (a, b) { return a.date - b.date; });   // oldest first so statuses move forward
-  msgs.forEach(function (m) { processMessage_(m, ctx); });
-  return true;
+  return msgs;
+}
+
+/** GmailApp returns whole threads, so filter each message to the window and recipients. */
+function listViaGmailApp_(q, after, before, ctx, started) {
+  var from = parseGmailDate_(after), to = before ? parseGmailDate_(before) : null;
+  var me = String(Session.getEffectiveUser().getEmail() || '').toLowerCase();
+  var ignore = String(ctx.st.scalars['Ignore emails to'] || '').toLowerCase().split(/[,\s]+/).filter(String);
+  var only = String(ctx.st.scalars['Only emails to (optional)'] || '').toLowerCase().trim();
+  var msgs = [], start = 0, page;
+  do {
+    page = GmailApp.search(q, start, 100);
+    for (var t = 0; t < page.length; t++) {
+      if (Date.now() - started > SCAN_BUDGET_MS) return null;
+      var ms = page[t].getMessages();
+      for (var k = 0; k < ms.length; k++) {
+        var m = ms[k], id = m.getId(), d = m.getDate();
+        if (ctx.seen[id]) { ctx.stats.skipped++; continue; }
+        if (d < from || (to && d >= to)) continue;
+        var fromAddr = m.getFrom();
+        if (me && emailAddress(fromAddr) === me) continue;          // my own replies
+        var rcpt = (m.getTo() + ',' + m.getCc()).toLowerCase();
+        if (ignore.some(function (x) { return rcpt.indexOf(x) !== -1; })) continue;
+        if (only && rcpt.indexOf(only) === -1) continue;
+        msgs.push({ id: id, threadId: page[t].getId(), date: d, from: fromAddr,
+          to: m.getTo(), subject: m.getSubject() || '', body: m.getPlainBody() || '' });
+      }
+    }
+    start += page.length;
+  } while (page.length === 100);
+  return msgs;
 }
 
 function fetchMessage_(id) {

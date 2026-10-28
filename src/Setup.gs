@@ -28,7 +28,13 @@ function setup() {
   setupSettings_(ss);
   setupDashboard_(ss);
   var seeded = seedIfEmpty_();
-  try { setupFilterViews_(ss); } catch (e) { Logger.log('Filter views skipped: ' + e); }
+  try {
+    if (typeof Sheets === 'undefined') throw new Error('Sheets service not enabled');
+    setupFilterViews_(ss);
+  } catch (e) {
+    Logger.log('Filter views unavailable (' + e + '); using view tabs instead');
+    setupViewTabs_(ss);
+  }
   installTriggers_();
   ensureToken_();
   // tab order
@@ -311,6 +317,35 @@ function setupFilterViews_(ss) {
   Sheets.Spreadsheets.batchUpdate({ requests: reqs }, id);
 }
 
+/**
+ * Fallback for the copy-paste setup (no Sheets API): three read-only tabs that always show
+ * the Urgent / Active pipeline / Closed rows. Edit rows on Applications, not here.
+ */
+function setupViewTabs_(ss) {
+  var apps = "'" + CFG.SHEET.APPS + "'!";
+  var last = colLetter_(CFG.APP_COLS.length);
+  var P = apps + 'P2:P', M = apps + 'M2:M', data = apps + 'A2:' + last;
+  var views = [
+    ['Urgent', 'SORT(FILTER(' + data + ',((' + P + '="To apply")+(' + P + '="In progress")),ISNUMBER(' + M +
+      '),' + M + '-TODAY()<=14),13,TRUE)'],
+    ['Active pipeline', 'FILTER(' + data + ',ISNUMBER(MATCH(' + P +
+      ',{"Applied","Assessment","Interview R1","Interview R2","Final round","Offer"},0)))'],
+    ['Closed', 'FILTER(' + data + ',ISNUMBER(MATCH(' + P + ',{"Rejected","Ghosted","Withdrawn"},0)))']
+  ];
+  views.forEach(function (v) {
+    var sh = ss.getSheetByName(v[0]) || ss.insertSheet(v[0]);
+    sh.clear();
+    sh.getRange(1, 1, 1, CFG.APP_COLS.length).setValues([CFG.APP_COLS])
+      .setFontWeight('bold').setBackground('#1f3a5f').setFontColor('#ffffff');
+    sh.getRange(2, 1).setFormula('=IFERROR(' + v[1] + ',"(nothing here right now)")');
+    sh.setFrozenRows(1);
+    sh.setFrozenColumns(2);
+    sh.getRange('M2:M').setNumberFormat('mmm d, yyyy');
+    sh.getRange('R2:S').setNumberFormat('mmm d, yyyy');
+    sh.setTabColor('#999999');
+  });
+}
+
 var TRIGGER_FNS = ['processNewEmails', 'dailyDigest', 'markGhosted', 'backfill'];
 
 function installTriggers_() {
@@ -320,9 +355,9 @@ function installTriggers_() {
   var st = getSettings_();
   var hour = Number(st.scalars['Digest hour (ET, 0-23)']);
   if (isNaN(hour)) hour = 7;
-  ScriptApp.newTrigger('processNewEmails').timeBased().everyHours(4).create();
-  ScriptApp.newTrigger('markGhosted').timeBased().everyDays(1).atHour(Math.max(0, hour - 1)).create();
-  ScriptApp.newTrigger('dailyDigest').timeBased().everyDays(1).atHour(hour).create();
+  ScriptApp.newTrigger('processNewEmails').timeBased().everyHours(4).inTimezone(CFG.TZ).create();
+  ScriptApp.newTrigger('markGhosted').timeBased().everyDays(1).atHour(Math.max(0, hour - 1)).inTimezone(CFG.TZ).create();
+  ScriptApp.newTrigger('dailyDigest').timeBased().everyDays(1).atHour(hour).inTimezone(CFG.TZ).create();
 }
 
 function seedIfEmpty_() {
