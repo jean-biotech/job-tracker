@@ -57,7 +57,7 @@
 | Harlem | (variant of General — use if a role is close to the one it was written for) |
 
 ## Fit score rubric (1–5)
-- **5**: in a target area, eligible on dates/degree, tier-1 location, and she meets every hard requirement
+- **5**: in a target area, right degree level, tier-1 location, and she meets every hard requirement
 - **4**: in a target area and eligible, but a tier-2 location or one soft gap
 - **3**: plausible stretch (adjacent field, or a "preferred" qualification missing)
 - **2**: long shot (hard requirement partly missing, or a poor location)
