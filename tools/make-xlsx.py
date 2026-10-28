@@ -1,6 +1,7 @@
 """Build dist/JobList.xlsx from a merged roles JSON (output of tools/merge-roles.js).
 
-Usage: python3 tools/make-xlsx.py roles.json
+Usage: python3 tools/make-xlsx.py roles.json [opportunities.json]
+The optional second file adds an "Opportunities" tab (fellowships, programs, competitions...).
 """
 import json
 import sys
@@ -143,6 +144,47 @@ for i, p in enumerate(prog, hdr_row + 1):
 
 for col, w in zip('ABCDEFGHI', [38, 8, 8, 3, 22, 8, 3, 16, 8]):
     s.column_dimensions[col].width = w
+
+# ---- Opportunities tab (optional)
+if len(sys.argv) > 2:
+    opps = json.loads(Path(sys.argv[2]).read_text())
+    opps.sort(key=lambda o: (as_date(o.get('deadline')) is None, as_date(o.get('deadline')) or date.max))
+    o = wb.create_sheet('Opportunities')
+    OCOLS = [('Deadline', 12), ('Days left', 9), ('Name (click to open)', 40), ('Kind', 18),
+             ('Organizer', 22), ('What it is', 50), ('Value', 24), ('Why it fits you', 46),
+             ('Notes', 50), ('My status', 13)]
+    for c, (h, w) in enumerate(OCOLS, 1):
+        cell = o.cell(row=1, column=c, value=h)
+        cell.font, cell.fill = HEAD_FONT, HEAD_FILL
+        cell.alignment = Alignment(wrap_text=True, vertical='center')
+        o.column_dimensions[get_column_letter(c)].width = w
+    for r, j in enumerate(opps, 2):
+        d = as_date(j.get('deadline'))
+        vals = [d or (j.get('deadline') or 'Rolling'), None, j.get('name'), j.get('kind'), j.get('organizer'),
+                j.get('what'), j.get('value'), j.get('why'), j.get('notes'), 'Interested']
+        for c, v in enumerate(vals, 1):
+            cell = o.cell(row=r, column=c, value=v)
+            cell.font = BODY
+            cell.alignment = Alignment(vertical='top', wrap_text=c in (3, 6, 8, 9))
+        o.cell(row=r, column=1).number_format = 'mmm d, yyyy'
+        o.cell(row=r, column=2, value=f'=IF(ISNUMBER(A{r}),A{r}-TODAY(),"")')
+        if j.get('link'):
+            o.cell(row=r, column=3).hyperlink = j['link']
+            o.cell(row=r, column=3).font = LINK
+    olast = len(opps) + 1
+    o.freeze_panes = 'D2'
+    o.auto_filter.ref = f'A1:{get_column_letter(len(OCOLS))}{olast}'
+    odv = DataValidation(type='list', formula1='"Interested,Applied,Accepted,Not for me"', allow_blank=True)
+    o.add_data_validation(odv)
+    odv.add(f'J2:J{olast}')
+    orng = f'A2:{get_column_letter(len(OCOLS))}{olast}'
+    o.conditional_formatting.add(orng, FormulaRule(formula=['AND(ISNUMBER($B2),$B2<0)'],
+        font=Font(name=FONT, color='9E9E9E', strike=True), stopIfTrue=True))
+    o.conditional_formatting.add(orng, FormulaRule(formula=['AND(ISNUMBER($B2),$B2<=7)'],
+        fill=PatternFill('solid', start_color='F4CCCC'), stopIfTrue=True))
+    o.conditional_formatting.add(orng, FormulaRule(formula=['AND(ISNUMBER($B2),$B2<=21)'],
+        fill=PatternFill('solid', start_color='FFF2CC')))
+    s.cell(row=6, column=1, value=f'Plus {len(opps)} fellowships / programs / competitions on the "Opportunities" tab.').font = Font(name=FONT, size=10, bold=True)
 
 wb.save(out)
 print(f'wrote {out} ({len(roles)} roles)')
