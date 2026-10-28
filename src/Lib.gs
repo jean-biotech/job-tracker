@@ -515,14 +515,24 @@ function normalizeUrl(u) {
     .replace(/[?#].*$/, '').replace(/\/+$/, '');
 }
 
-/** True if (company, role, link) already exists in any of the given row lists. */
+/**
+ * True if (company, role, link) already exists in any of the given row lists.
+ * Same link only counts when the roles also look alike (many postings share one program page),
+ * and a different location means a different posting.
+ */
 function isDuplicate(job, existing) {
   var k = dedupeKey(job.company, job.role), u = normalizeUrl(job.link);
+  var loc = String(job.location || '').toLowerCase().slice(0, 12);
+  // a link with a job ID (5+ digits) is one specific posting
+  if (u && /\d{5,}/.test(u) && existing.some(function (e) { return normalizeUrl(e.link) === u; })) return true;
   return existing.some(function (e) {
-    if (u && normalizeUrl(e.link) === u) return true;
+    var eloc = String(e.location || '').toLowerCase().slice(0, 12);
+    if (loc && eloc && loc !== eloc) return false;
     if (dedupeKey(e.company, e.role) === k) return true;
-    return companySim(e.company, job.company) >= 0.85 && roleSim(e.role, job.role) >= 0.8 &&
-      roleSim(job.role, e.role) >= 0.8;
+    if (companySim(e.company, job.company) < 0.85) return false;
+    var r1 = roleSim(e.role, job.role), r2 = roleSim(job.role, e.role);
+    if (u && normalizeUrl(e.link) === u && r1 >= 0.5 && r2 >= 0.5) return true;
+    return r1 >= 0.9 && r2 >= 0.9;
   });
 }
 

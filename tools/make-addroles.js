@@ -5,6 +5,10 @@ const fs = require('fs');
 const path = require('path');
 const roles = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const stamp = new Date().toISOString().slice(0, 10);
+// Ship the current duplicate check with the file, so an older pasted JobTracker.gs still dedupes correctly.
+const lib = fs.readFileSync(path.join(__dirname, '..', 'src', 'Lib.gs'), 'utf8');
+const dupSrc = lib.slice(lib.indexOf('function isDuplicate('), lib.indexOf('/** Location tier'))
+  .replace('function isDuplicate(', 'function addRolesIsDup_(');
 const out = `/**
  * AddRoles.gs — ${roles.length} open roles researched on ${stamp}.
  * HOW: paste this as a NEW file next to your main code (Files → + → Script),
@@ -15,7 +19,7 @@ var NEW_ROLES = ${JSON.stringify(roles, null, 1)};
 function addRoles() {
   var st = getSettings_();
   var existing = readRows_(CFG.SHEET.APPS).concat(readRows_(CFG.SHEET.DISC)).map(function (r) {
-    return { company: r['Company'], role: r['Role'], link: r['Link'] };
+    return { company: r['Company'], role: r['Role'], link: r['Link'], location: r['Location'] };
   });
   var sorted = NEW_ROLES.slice().sort(function (a, b) {
     var da = toDate(a.deadline), db = toDate(b.deadline);
@@ -26,7 +30,7 @@ function addRoles() {
   });
   var added = 0, skipped = 0;
   sorted.forEach(function (j) {
-    if (isDuplicate(j, existing)) { skipped++; return; }
+    if (addRolesIsDup_(j, existing)) { skipped++; return; }
     var o = {
       'Company': j.company, 'Role': j.role, 'Type': j.type, 'Category': j.category,
       'Location': j.location, 'Remote?': j.remote || 'Unknown', 'Pay (as listed)': j.pay || 'Not listed',
@@ -40,13 +44,14 @@ function addRoles() {
     };
     enrichPay_(o, st);
     appendRow_(CFG.SHEET.APPS, o);
-    existing.push({ company: j.company, role: j.role, link: j.link });
+    existing.push({ company: j.company, role: j.role, link: j.link, location: j.location });
     logHistory_(o['Row ID'], j.company, j.role, '', 'To apply', 'Claude research');
     added++;
   });
   SpreadsheetApp.getActiveSpreadsheet().toast('Added ' + added + ' roles (' + skipped + ' duplicates skipped).', 'Job Tracker', 10);
   Logger.log('Added ' + added + ', skipped ' + skipped);
 }
-`;
+
+${dupSrc}`;
 fs.writeFileSync(path.join(__dirname, '..', 'dist', 'AddRoles.gs'), out);
 console.log('wrote dist/AddRoles.gs with ' + roles.length + ' roles');

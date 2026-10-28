@@ -163,6 +163,11 @@ test('dedupe by link or company+role', () => {
   assert.equal(L.isDuplicate({ company: 'Neuralink Corp', role: 'Internship', link: '' }, ex), true);
   assert.equal(L.isDuplicate({ company: 'X', role: 'Y', link: 'https://job-boards.greenhouse.io/neuralink/jobs/7483748003' }, ex), true);
   assert.equal(L.isDuplicate({ company: 'Neuralink', role: 'Software Engineer', link: '' }, ex), false);
+  // shared program page, different roles / locations -> not duplicates
+  const gs = [{ company: 'Goldman Sachs', role: 'Summer Analyst – Private Investing', location: 'New York, NY', link: 'https://goldmansachs.com/careers/program' }];
+  assert.equal(L.isDuplicate({ company: 'Goldman Sachs', role: 'Summer Analyst – Private Investing', location: 'San Francisco, CA', link: 'https://goldmansachs.com/careers/program' }, gs), false);
+  const gh = [{ company: 'Guidehouse', role: 'Consulting Analyst - Life Sciences Advisory - Campus 2027' }];
+  assert.equal(L.isDuplicate({ company: 'Guidehouse', role: 'Intern - Life Sciences Advisory - Campus 2027' }, gh), false);
 });
 
 test('location tiers', () => {
