@@ -5,7 +5,8 @@
 ## Basics
 - Accelerated BS/MS Biotechnology + Business Analytics minor, Thomas Jefferson University (Philadelphia). GPA 3.75.
 - Graduates end of May 2027 and can start full-time right after.
-- Looking for Summer 2027 internships **or** new-grad full-time roles. Programs that require returning to school after the internship may not fit, so flag them.
+- Looking for Summer 2027 internships **or** new-grad full-time roles.
+- **Graduation-window rules don't matter to her.** Include internships that say "must return to school" or "graduating Dec 2027–2028", and score them as if she's eligible. Mention the rule in Notes, nothing more.
 - Locations:
   - Tier 1: NYC metro (Manhattan, Brooklyn, Jersey City/Hoboken) and SF Bay Area (SF, South SF, Peninsula, San Jose)
   - Tier 2: Boston/Cambridge, remote, London, Sydney/Australia, Philadelphia
@@ -60,4 +61,4 @@
 - **4**: in a target area and eligible, but a tier-2 location or one soft gap
 - **3**: plausible stretch (adjacent field, or a "preferred" qualification missing)
 - **2**: long shot (hard requirement partly missing, or a poor location)
-- **1**: not eligible (needs a PhD/MD or 3+ years of experience, or must be enrolled after the internship when she can't be)
+- **1**: not eligible (needs a PhD/MD/JD, an MBA, or 2+ years of full-time experience). A return-to-school or graduation-window requirement is NOT a reason to lower the score.

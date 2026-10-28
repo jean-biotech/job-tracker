@@ -60,7 +60,8 @@ For every posting you keep, **open it** and record:
 - **live**: confirm it's still accepting applications.
 - **deadline**: YYYY-MM-DD if stated, else "Rolling".
 - **pay**: exactly as listed, or omit it if not listed. Pay that isn't listed is fine; the sheet will mark it Unknown.
-- **requirements vs profile**: degree/graduation window (she graduates May 2027), years of experience, work authorization, location.
+- **requirements vs profile**: years of experience, degree level, work authorization, location.
+  - Graduation-window / return-to-school rules do **not** disqualify her and don't lower fit. She applies anyway. Just note them.
 - **fit**: 1–5, using the rubric in `profile.md`.
 - **resume**: one of `General`, `Product (Anthropic)`, `Consulting (BlueMatter)`, `Finance (Jefferies)`, `Harlem`.
 - **why**: ONE line saying why it fits her specifically. Cite her real experience, e.g. "Pfizer GRS regtech eval maps to their regulatory intelligence work".
